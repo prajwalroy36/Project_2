@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS queue (
+
+    id SERIAL PRIMARY KEY,
+
+    order_id TEXT UNIQUE NOT NULL,
+
+    raw_payload JSONB NOT NULL,
+
+    status VARCHAR(30) NOT NULL,
+
+    retry_count INTEGER DEFAULT 0,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+);
