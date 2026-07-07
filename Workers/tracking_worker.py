@@ -1,30 +1,17 @@
 # Workers/tracking_worker.py
 import asyncio
-from Core.config import settings
 
-from Database.database import (
-    get_order_by_order_id,
-    update_order_lifecycle,
-)
-from Services.error_handling import (
-    handle_tracking_error,
-)
+from Core.config import settings
+from Database.database import get_order_by_order_id, update_order_lifecycle
+from Services.error_handling import handle_tracking_error
 from Services.logger import logger
-from Services.tracking import (
-    process_tracking,
-    cleanup_tracking_file,
-)
+from Services.tracking import cleanup_tracking_file, process_tracking
 
 
 def process_tracking_worker() -> None:
-    """
-    Processes every downloaded warehouse tracking file
-    and updates matching orders.
-    """
     logger.info("Tracking worker started.")
 
     processed_files = process_tracking()
-
     if not processed_files:
         logger.info("No tracking files found.")
         return
@@ -33,21 +20,13 @@ def process_tracking_worker() -> None:
         file = file_data["file"]
         records = file_data["records"]
 
-        logger.info(
-            f"Processing {file['filename']} "
-            f"({len(records)} records)"
-        )
+        logger.info("Processing %s (%s records)", file["filename"], len(records))
 
         try:
             for record in records:
-                order = get_order_by_order_id(
-                    record["order_id"]
-                )
-
+                order = get_order_by_order_id(record["order_id"])
                 if order is None:
-                    logger.warning(
-                        f"Order {record['order_id']} not found."
-                    )
+                    logger.warning("Order %s not found.", record["order_id"])
                     continue
 
                 update_order_lifecycle(
@@ -58,43 +37,24 @@ def process_tracking_worker() -> None:
                     tracking_received=True,
                     completed=True,
                 )
+                logger.info("Tracking updated for %s", record["order_id"])
 
-                logger.info(
-                    f"Tracking updated for "
-                    f"{record['order_id']}"
-                )
+            cleanup_tracking_file(file["local_path"], file["remote_path"])
+            logger.info("%s processed successfully.", file["filename"])
 
-            cleanup_tracking_file(
-                file["local_path"],
-                file["remote_path"],
-            )
-
-            logger.info(
-                f"{file['filename']} processed successfully."
-            )
-
-        except Exception as e:
-            handle_tracking_error(
-                filename=file["filename"],
-                error=e,
-            )
+        except Exception as exc:
+            handle_tracking_error(filename=file["filename"], error=exc)
 
     logger.info("Tracking worker finished.")
 
 
 async def autonomous_tracking_loop():
-    """
-    Runs in the background, waking up periodically to check the warehouse
-    SFTP for tracking CSVs, processing them, and going back to sleep.
-    """
+    logger.info("Autonomous tracking loop started.")
+
     while True:
         try:
-            # We run the synchronous tracking worker inside an executor
-            # so it doesn't block the FastAPI async event loop.
             await asyncio.to_thread(process_tracking_worker)
-        except Exception as e:
-            logger.error(f"Critical failure in tracking loop: {e}")
-        
-        # Check for tracking every 15 minutes (900 seconds)
-        # You can add TRACKING_POLL_INTERVAL=900 to your .env
-        await asyncio.sleep(getattr(settings, 'TRACKING_POLL_INTERVAL', 900))
+        except Exception as exc:
+            logger.error("Critical failure in tracking loop: %s", exc)
+
+        await asyncio.sleep(settings.TRACKING_POLL_INTERVAL)

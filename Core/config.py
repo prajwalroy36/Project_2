@@ -1,16 +1,14 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """
     Central application configuration.
-
-    Values are loaded from .env and can be overridden
-    by environment variables.
+    Values are loaded from .env and can be overridden by environment variables.
     """
 
     model_config = SettingsConfigDict(
@@ -32,6 +30,8 @@ class Settings(BaseSettings):
     # -------------------------------------------------
 
     DATABASE_URL: str
+    DB_POOL_MIN: int = Field(default=2, ge=1)
+    DB_POOL_MAX: int = Field(default=10, ge=1)
 
     # -------------------------------------------------
     # Shopify
@@ -41,14 +41,13 @@ class Settings(BaseSettings):
     SHOPIFY_WEBHOOK_SECRET: str = ""
 
     # -------------------------------------------------
-    # Warehouse
+    # Warehouse SFTP
     # -------------------------------------------------
 
     SFTP_HOST: str
     SFTP_PORT: int = 22
     SFTP_USER: str
     SFTP_PASS: str
-
     SFTP_UPLOAD_DIR: str = "/incoming"
     SFTP_TRACKING_DIR: str = "/tracking"
 
@@ -63,38 +62,50 @@ class Settings(BaseSettings):
     # -------------------------------------------------
 
     MAX_RETRIES: int = Field(default=3, ge=0)
+    WORKER_SLEEP_SECONDS: int = Field(default=5, ge=1)
+    TRACKING_POLL_INTERVAL: int = Field(default=900, ge=30)
+    METRICS_ALERT_HELD_THRESHOLD: int = Field(default=5, ge=1)
 
-    WORKER_SLEEP_SECONDS: int = Field(
-        default=5,
-        ge=1,
-    )
+    # -------------------------------------------------
+    # Frontend Dashboard
+    # -------------------------------------------------
+
+    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_API_KEY: str = "super_secret_dev_key_123"
 
     # -------------------------------------------------
     # Logging
     # -------------------------------------------------
 
-    # -------------------------------------------------
-    # Frontend Dashboard
-    # -------------------------------------------------
-    FRONTEND_URL: str = "http://localhost:5173"
-    FRONTEND_API_KEY: str = "super_secret_dev_key_123"
-
-    
-
     LOG_LEVEL: Literal[
-    "DEBUG",
-    "INFO",
-    "WARNING",
-    "ERROR",
-    "CRITICAL",
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
     ] = "INFO"
+
+    # -------------------------------------------------
+    # Security
+    # -------------------------------------------------
+
+    WEBHOOK_HMAC_REQUIRED: bool = False
+
+    @model_validator(mode="after")
+    def enforce_production_security(self) -> "Settings":
+        if self.ENVIRONMENT.lower() == "production":
+            self.WEBHOOK_HMAC_REQUIRED = True
+            if not self.SHOPIFY_WEBHOOK_SECRET:
+                raise ValueError("SHOPIFY_WEBHOOK_SECRET is required in production")
+        return self
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """
-    Returns a cached Settings instance.
-    """
     return Settings()
 
 

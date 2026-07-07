@@ -1,4 +1,8 @@
-fastapi==0.111.0      # For building the incoming API/Webhook listener
-uvicorn==0.30.1      # The server engine that keeps FastAPI running
-paramiko==3.4.0     # The library that connects and uploads to SFTP servers
-python-dotenv==1.0.1 # Allows Python to read your secret .env file
+fastapi==0.111.0
+uvicorn==0.30.1
+paramiko==3.4.0
+python-dotenv==1.0.1
+psycopg[binary,pool]==3.2.9
+pydantic==2.11.7
+pydantic-settings==2.10.1
+requests==2.32.4
