@@ -1,43 +1,83 @@
 import os
 import paramiko
+
 from Core.config import settings
 
-def upload_via_sftp(local_file_path:str):
-    # in production these  parameter will be pulled from your .env file
-    HOST = settings.SFTP_HOST
-    PORT = settings.SFTP_PORT
-    USER = settings.SFTP_USERNAME
-    PASSWORD = settings.SFTP_PASSWORD
-    
 
-    transport = paramiko.Transport((HOST, PORT))
-    transport.banner_timeout = 10
-    transport.auth_timeout = 10
+def upload_via_sftp(local_file_path: str) -> str:
+    """
+    Uploads a CSV file to the warehouse.
+
+    Returns
+    -------
+    str
+        The uploaded filename on the warehouse.
+
+    Raises
+    ------
+    Exception
+        Any upload related exception.
+    """
+
+    transport = None
     sftp = None
-    try:
-        print(f"CONNECTING TO {HOST}:{PORT}")
-        transport.connect(username=USER,password=PASSWORD)
 
-        print(f"CONNECTED TO WAREHOUSE!")
+    try:
+
+        transport = paramiko.Transport(
+            (
+                settings.SFTP_HOST,
+                settings.SFTP_PORT,
+            )
+        )
+
+        transport.connect(
+            username=settings.SFTP_USERNAME,
+            password=settings.SFTP_PASSWORD,
+        )
+
         sftp = paramiko.SFTPClient.from_transport(transport)
 
-        
+        remote_filename = os.path.basename(local_file_path)
 
-    #destination directory file path definition
-        remote_file_name = os.path.basename(local_file_path)
-        remote_file_path = ( f"{settings.SFTP_REMOTE_DIRECTORY}/{remote_file_name}")
+        remote_path = (
+            settings.SFTP_REMOTE_DIRECTORY.rstrip("/")
+            + "/"
+            + remote_filename
+        )
 
-        print(f"uploading {remote_file_name} to {remote_file_path}")
+        sftp.put(local_file_path, remote_path)
 
+        return remote_filename
 
+    except paramiko.AuthenticationException:
 
-    #execute secure transfer pipeline
-    
-        sftp.put(local_file_path, remote_file_path)
+        raise Exception(
+            "Warehouse login failed. Check username or password."
+        )
 
-        print(f"UPLOAD COMPLETE!")
+    except FileNotFoundError:
+
+        raise Exception(
+            "CSV file does not exist."
+        )
+
+    except TimeoutError:
+
+        raise Exception(
+            "Warehouse connection timed out."
+        )
+
+    except Exception as e:
+
+        raise Exception(
+            f"Warehouse upload failed : {str(e)}"
+        )
+
     finally:
+
         if sftp is not None:
             sftp.close()
+
         if transport is not None:
             transport.close()

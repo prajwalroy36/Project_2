@@ -1,35 +1,71 @@
 import csv
-from datetime import datetime,timedelta
-from Schemas.Order import  OrderPayload
+from Services.transformers import transform_order
 
-def clean_and_transform_data(raw_payload: dict)-> str: 
-    payload = OrderPayload.model_validate(raw_payload)
-    order_id = payload.order_id
 
-    #RULE 1 ~ SLICING STRING LIMIT TO MAXIMUM '30' CHARACTERS
+def generate_csv(raw_payload: str) -> str:
+    """
+    Generates a warehouse CSV from the incoming raw payload.
 
-    raw_address = payload.customer.address
-    truncated_address = raw_address[:30]
+    Flow
 
-    #RULE 2 ~ CALCAULATE OPERATIONAL 10AM CUTOFF DATE PARAMETERS
+    Raw Payload
+            ↓
+    Transform
+            ↓
+    Warehouse Payload
+            ↓
+    CSV
+            ↓
+    Return CSV filename
+    """
 
-    order_time = datetime.strptime(payload.timestamp,"%Y-%m-%dT%H:%M:%SZ") # why did d light up?,where does "timestamp" come from?
-    if order_time.hour >= 10:
-        delivery_date = order_time + timedelta(days=1) #timedelta datetime module
-    else:
-        delivery_date = order_time
-    
-    #skip weekend safely
-    if delivery_date.weekday()== 5: delivery_date += timedelta(days=2)
-    elif delivery_date.weekday()== 6: delivery_date += timedelta(days=1)
-    formatted_date = delivery_date.strftime("%m/%d/%Y")
+    # ----------------------------------------
+    # Transform order into warehouse payload
+    # ----------------------------------------
+    warehouse_payload = transform_order(raw_payload)
 
-    # ~GENERATE CSV LINE STRUCTURE~
+    order_id = warehouse_payload["order_id"]
 
     csv_filename = f"order_{order_id}.csv"
-    with open (csv_filename, mode='w', newline='') as file:
+
+    with open(csv_filename, mode="w", newline="", encoding="utf-8") as file:
+
         writer = csv.writer(file)
-        writer.writerow(["Order Id", "Customer Name", "Truncated Address", "Unit", "Delivery Date","SKU", "Quantity"])
-        for item in payload.line_items:
-            writer.writerow([order_id, payload.customer.name, truncated_address, "Each",formatted_date,item.sku,item.qty])
+
+        writer.writerow([
+            "Order ID",
+            "Customer Name",
+            "Address Line 1",
+            "Address Line 2",
+            "Address Line 3",
+            "Unit",
+            "Delivery Date",
+            "SKU",
+            "Quantity"
+        ])
+
+        for item in warehouse_payload["line_items"]:
+
+            writer.writerow([
+
+                warehouse_payload["order_id"],
+
+                warehouse_payload["customer_name"],
+
+                warehouse_payload["address_line_1"],
+
+                warehouse_payload["address_line_2"],
+
+                warehouse_payload["address_line_3"],
+
+                warehouse_payload["unit"],
+
+                warehouse_payload["delivery_date"],
+
+                item["sku"],
+
+                item["qty"]
+
+            ])
+
     return csv_filename
